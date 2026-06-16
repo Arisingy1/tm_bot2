@@ -1,6 +1,5 @@
 import logging
 import os
-import re
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from telegram import (
@@ -20,7 +19,7 @@ from telegram.ext import (
     ContextTypes,
     ConversationHandler,
 )
-from gsheets import append_row
+from gsheets import append_row, get_completed_user_ids
 
 load_dotenv(override=True)
 
@@ -182,20 +181,25 @@ SHORT_LABELS = [
     ['Около 20%', 'Около 45%', '73%', 'Около 90%'],
 ]
 
-COMPLETED_USERS_FILE = 'completed_users.txt'
+# Колонка с Telegram ID в Google Таблице (последняя колонка строки лида).
+# 6 мета-полей + вопросы + 3 поля баллов + сам ID.
+USER_ID_COLUMN = 6 + len(QUIZ_QUESTIONS) + 3 + 1
 
 
-def has_user_completed(user_id):
-    if not os.path.exists(COMPLETED_USERS_FILE):
+async def has_user_completed(user_id):
+    """
+    Проверяем по Google Таблице, проходил ли человек квиз.
+    Источник истины — таблица: удалите строку участника, и он сможет пройти заново.
+    Если таблица недоступна — не блокируем человека (разрешаем пройти).
+    """
+    try:
+        completed = await get_completed_user_ids(
+            GOOGLE_CREDENTIALS_FILE, SPREADSHEET_URL, USER_ID_COLUMN
+        )
+    except Exception as e:
+        logger.error(f'Не удалось проверить участие в Google Таблице: {e}')
         return False
-    with open(COMPLETED_USERS_FILE, 'r') as f:
-        completed = set(line.strip() for line in f)
     return str(user_id) in completed
-
-
-def mark_user_completed(user_id):
-    with open(COMPLETED_USERS_FILE, 'a') as f:
-        f.write(f'{user_id}\n')
 
 
 def is_answer_correct(q_index: int, chosen: int) -> bool:
@@ -245,7 +249,7 @@ def question_keyboard(q_index: int) -> InlineKeyboardMarkup:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = update.message.from_user
-    if has_user_completed(user.id):
+    if await has_user_completed(user.id):
         await update.message.reply_text('👋 Вы уже участвовали в квизе. Спасибо! Удачи в розыгрыше 🍀')
         return ConversationHandler.END
 
@@ -467,6 +471,7 @@ async def finalize(message, user, context: ContextTypes.DEFAULT_TYPE) -> int:
         quiz_score(context),
         'да' if context.user_data.get('subscribed') else 'нет',
         total_score(context),
+        str(user.id),
     ]
 
     try:
@@ -477,7 +482,6 @@ async def finalize(message, user, context: ContextTypes.DEFAULT_TYPE) -> int:
         logger.error(f'Ошибка при записи в Google Таблицу: {e}')
         logger.error(traceback.format_exc())
 
-    mark_user_completed(user.id)
     context.user_data.clear()
     return ConversationHandler.END
 
