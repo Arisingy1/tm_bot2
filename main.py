@@ -38,7 +38,6 @@ CHANNEL_USERNAME = os.getenv('CHANNEL_USERNAME', '@talentmind')   # для getCh
 CHANNEL_URL = os.getenv('CHANNEL_URL', 'https://t.me/talentmind')  # ссылка-кнопка «Подписаться»
 
 # Финальные материалы
-CALCULATOR_URL = os.getenv('CALCULATOR_URL', 'https://talentmind.ru/calculator')
 EVENT_INFO = os.getenv('EVENT_INFO', '19 июня в 15:00 на стенде TalentMind')
 
 # Московское время для отметок времени в Google Таблице
@@ -449,10 +448,7 @@ async def finalize(message, user, context: ContextTypes.DEFAULT_TYPE) -> int:
     congrats = (
         f'🎉 Поздравляем! Вы зарегистрированы в розыгрыше приза. Он состоится {EVENT_INFO}. Удачи!'
     )
-    keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton('🧮 Открыть калькулятор', url=CALCULATOR_URL)]]
-    )
-    await message.reply_text(congrats, reply_markup=keyboard, parse_mode='HTML')
+    await message.reply_text(congrats, parse_mode='HTML')
 
     # Сохраняем все данные участника в Google Таблицу:
     # время, контакты, ответ по каждому вопросу, баллы за квиз, подписку и итог
