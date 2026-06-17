@@ -258,7 +258,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     text = (
         'Готовы проверить свою HR-интуицию? 🧠\n\n'
-        'Пройдите наш квиз из 5 вопросов об ИИ в рекрутинге и выиграйте приз!\n\n'
+        'Пройдите наш квиз из 5 вопросов и выиграйте приз — умную колонку!\n\n'
         '<b>Правила просты:</b>\n'
         '• Отвечайте на 5 вопросов.\n'
         f'• За каждый правильный ответ — {POINTS_PER_CORRECT} баллов.\n'
@@ -450,7 +450,10 @@ async def on_contact_reprompt(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def finalize(message, user, context: ContextTypes.DEFAULT_TYPE) -> int:
     congrats = (
-        f'🎉 Поздравляем! Вы зарегистрированы в розыгрыше приза. Он состоится {EVENT_INFO}. Удачи!'
+        '🎉 Поздравляем!\n\n'
+        'Вы участвуете в розыгрыше приза — умной колонки Алиса.\n'
+        f'Он состоится {EVENT_INFO}.\n\n'
+        'Удачи!'
     )
     await message.reply_text(congrats, parse_mode='HTML')
 
