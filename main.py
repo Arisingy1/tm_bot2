@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from datetime import datetime, timezone, timedelta
@@ -26,6 +27,14 @@ load_dotenv(override=True)
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 GOOGLE_CREDENTIALS_FILE = os.getenv('GOOGLE_CREDENTIALS_FILE', 'credentials.json')
 SPREADSHEET_URL = os.getenv('SPREADSHEET_URL')
+
+# Кому разрешена команда /broadcast (ники без @, в нижнем регистре).
+# Можно переопределить переменной окружения BROADCAST_ADMINS (ники через запятую).
+ADMIN_USERNAMES = {
+    u.strip().lstrip('@').lower()
+    for u in os.getenv('BROADCAST_ADMINS', 'Nrl2108,Fl11ks').split(',')
+    if u.strip()
+}
 
 # --- Геймификация / конфигурация ---
 POINTS_PER_CORRECT = 20
@@ -495,6 +504,61 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /broadcast <текст> — разослать сообщение всем, кто прошёл квиз (есть в таблице).
+    Доступно только админам из ADMIN_USERNAMES. Текст отправляется как есть
+    (переносы строк и эмодзи сохраняются). Имя и ник вписываете в текст сами.
+    """
+    user = update.effective_user
+    username = (user.username or '').lower()
+    if username not in ADMIN_USERNAMES:
+        await update.message.reply_text('⛔ У вас нет доступа к этой команде.')
+        return
+
+    # Всё, что идёт после «/broadcast», — это текст рассылки (с переносами строк).
+    parts = update.message.text.split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        await update.message.reply_text(
+            'Отправьте команду вместе с текстом, например:\n\n'
+            '/broadcast 🎉 Розыгрыш состоялся! Победитель — Иван (@ivan). Поздравляем!'
+        )
+        return
+    message_text = parts[1]
+
+    try:
+        user_ids = await get_completed_user_ids(
+            GOOGLE_CREDENTIALS_FILE, SPREADSHEET_URL, USER_ID_COLUMN
+        )
+    except Exception as e:
+        logger.error(f'Не удалось получить список участников для рассылки: {e}')
+        await update.message.reply_text('⚠️ Не удалось прочитать список участников из таблицы.')
+        return
+
+    recipients = [uid for uid in user_ids if uid.isdigit()]
+    if not recipients:
+        await update.message.reply_text('В таблице пока нет участников с сохранённым Telegram ID.')
+        return
+
+    await update.message.reply_text(f'📤 Начинаю рассылку для {len(recipients)} участников…')
+
+    sent, failed = 0, 0
+    for uid in recipients:
+        try:
+            await context.bot.send_message(chat_id=int(uid), text=message_text)
+            sent += 1
+        except Exception as e:
+            failed += 1
+            logger.warning(f'Не доставлено пользователю {uid}: {e}')
+        await asyncio.sleep(0.05)  # бережём лимиты Telegram (~30 сообщений/сек)
+
+    await update.message.reply_text(
+        f'✅ Рассылка завершена.\n'
+        f'Доставлено: {sent}\n'
+        f'Не доставлено: {failed} (заблокировали бота или удалили чат)'
+    )
+
+
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -519,6 +583,7 @@ def main():
     )
 
     app.add_handler(conv_handler)
+    app.add_handler(CommandHandler('broadcast', broadcast))
 
     print('Бот успешно запущен и готов к работе!')
     app.run_polling()
